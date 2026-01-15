@@ -84,6 +84,7 @@ def save_metadata(audio_type, audio_filename, transcription):
 api = HfApi()
 
 def push_to_huggingface():
+    # Ensure repo exists
     create_repo(repo_id=HF_REPO_ID, repo_type="dataset", exist_ok=True, token=HF_TOKEN)
     print("✅ Repo exists or created successfully")
 
@@ -117,25 +118,44 @@ st.write("Record or upload voice → Transcribe → Save to Hugging Face")
 
 tab1, tab2 = st.tabs(["🎤 Record Voice", "📂 Upload Audio"])
 
+# ============================
 # RECORD TAB
+# ============================
 with tab1:
     st.subheader("🎤 Record your voice")
-    audio_bytes = audio_recorder()
+
+    audio_bytes = audio_recorder(
+        text="Click to start recording",
+        type="wav",
+        key="audio_recorder"
+    )
+
     if audio_bytes:
         st.audio(audio_bytes, format="audio/wav")
+        st.success("✅ Audio recorded successfully!")
+
         with st.spinner("Saving recorded audio..."):
             audio_path, filename, audio_type = save_recorded_audio(audio_bytes)
+
         with st.spinner("Transcribing..."):
             transcription = transcribe_audio(audio_path)
+
         if transcription:
             st.markdown("### 📝 Transcription")
             st.write(transcription)
             save_metadata(audio_type, filename, transcription)
+
             with st.spinner("Uploading to Hugging Face..."):
                 push_to_huggingface()
+
             st.success("✅ Recorded audio saved & uploaded!")
 
+    else:
+        st.info("🎤 Click the button above to record your voice. Allow microphone access in your browser.")
+
+# ============================
 # UPLOAD TAB
+# ============================
 with tab2:
     st.subheader("📂 Upload audio file")
     uploaded_file = st.file_uploader(
@@ -146,17 +166,23 @@ with tab2:
         with st.spinner("Saving uploaded file..."):
             audio_path, filename, audio_type = save_uploaded_file(uploaded_file)
         st.audio(audio_path)
+
         with st.spinner("Transcribing..."):
             transcription = transcribe_audio(audio_path)
+
         if transcription:
             st.markdown("### 📝 Transcription")
             st.write(transcription)
             save_metadata(audio_type, filename, transcription)
+
             with st.spinner("Uploading to Hugging Face..."):
                 push_to_huggingface()
+
             st.success("✅ Uploaded audio saved & uploaded!")
 
+# ============================
 # DISPLAY METADATA
+# ============================
 if os.path.exists(METADATA_PATH):
     st.subheader("📄 Current Dataset Metadata")
     st.dataframe(pd.read_csv(METADATA_PATH))
