@@ -11,6 +11,3 @@ audio-recorder-streamlit==0.0.14
 ffmpeg-python==0.2.1
 imageio==2.32.1
 imageio-ffmpeg==0.4.10
-
-
-
