@@ -1,41 +1,29 @@
 import os
 import uuid
+import warnings
 import streamlit as st
 import whisper
 import pandas as pd
 import numpy as np
 from scipy.io.wavfile import write
 from huggingface_hub import HfApi, create_repo
-from dotenv import load_dotenv
 from audio_recorder_streamlit import audio_recorder
 
 # ============================
-# LOAD ENV
+# SUPPRESS FP16 WARNING
 # ============================
-
-load_dotenv()
-
-HF_TOKEN = os.getenv("HF_TOKEN")
-HF_REPO_ID = os.getenv("HF_REPO_ID")
-
-if not HF_TOKEN or not HF_REPO_ID:
-    raise ValueError("HF_TOKEN or HF_REPO_ID not found! Check your .env or Streamlit secrets.")
-
-os.environ["HF_TOKEN"] = HF_TOKEN
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
 
 # ============================
-# FFMPEG (WINDOWS)
+# HUGGING FACE SECRETS
 # ============================
-
-if os.name == "nt":
-    os.environ["FFMPEG_BINARY"] = r"C:\ffmpeg\bin\ffmpeg.exe"
+HF_TOKEN = st.secrets["HF_TOKEN"]
+HF_REPO_ID = st.secrets["HF_REPO_ID"]
 
 # ============================
 # PATHS
 # ============================
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 UPLOADED_DIR = os.path.join(BASE_DIR, "audio", "uploaded")
 RECORDED_DIR = os.path.join(BASE_DIR, "audio", "recorded")
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -48,7 +36,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # ============================
 # LOAD WHISPER MODEL
 # ============================
-
 @st.cache_resource
 def load_whisper_model():
     return whisper.load_model("base")
@@ -58,27 +45,20 @@ model = load_whisper_model()
 # ============================
 # HELPERS
 # ============================
-
 def save_uploaded_file(uploaded_file):
     ext = uploaded_file.name.split(".")[-1].lower()
     filename = f"{uuid.uuid4()}.{ext}"
     save_path = os.path.join(UPLOADED_DIR, filename)
-
     with open(save_path, "wb") as f:
         f.write(uploaded_file.read())
-
     return save_path, filename, "uploaded"
-
 
 def save_recorded_audio(audio_bytes):
     filename = f"{uuid.uuid4()}.wav"
     save_path = os.path.join(RECORDED_DIR, filename)
-
     audio_np = np.frombuffer(audio_bytes, np.int16)
     write(save_path, 44100, audio_np)
-
     return save_path, filename, "recorded"
-
 
 def transcribe_audio(audio_path):
     try:
@@ -88,37 +68,27 @@ def transcribe_audio(audio_path):
         st.error(f"Transcription failed: {e}")
         return None
 
-
 def save_metadata(audio_type, audio_filename, transcription):
-    # Ensure audio + text are first columns
     new_row = pd.DataFrame([{
         "audio": f"audio/{audio_type}/{audio_filename}",
         "text": transcription
     }])
-
     if os.path.exists(METADATA_PATH):
         df = pd.read_csv(METADATA_PATH)
         df = pd.concat([df, new_row], ignore_index=True)
     else:
         df = new_row
-
     df.to_csv(METADATA_PATH, index=False)
     print("✅ Metadata saved:", METADATA_PATH)
-
 
 api = HfApi()
 
 def push_to_huggingface():
-    # Auto-create repo if missing
     create_repo(repo_id=HF_REPO_ID, repo_type="dataset", exist_ok=True, token=HF_TOKEN)
     print("✅ Repo exists or created successfully")
 
     audio_folder_path = os.path.join(BASE_DIR, "audio")
     metadata_path = METADATA_PATH
-
-    # Debug prints
-    print("Audio folder contents:", os.listdir(audio_folder_path))
-    print("Metadata file exists:", os.path.exists(metadata_path))
 
     # Upload audio folder
     api.upload_folder(
@@ -136,83 +106,57 @@ def push_to_huggingface():
         repo_type="dataset",
         token=HF_TOKEN
     )
-
     print("✅ Upload complete")
 
 # ============================
 # STREAMLIT UI
 # ============================
-
 st.set_page_config(page_title="Voice Dataset Collector", page_icon="🎙️")
 st.title("🎙️ Voice Dataset Collector")
 st.write("Record or upload voice → Transcribe → Save to Hugging Face")
 
 tab1, tab2 = st.tabs(["🎤 Record Voice", "📂 Upload Audio"])
 
-# ============================
 # RECORD TAB
-# ============================
-
 with tab1:
     st.subheader("🎤 Record your voice")
     audio_bytes = audio_recorder()
-
     if audio_bytes:
         st.audio(audio_bytes, format="audio/wav")
-
         with st.spinner("Saving recorded audio..."):
             audio_path, filename, audio_type = save_recorded_audio(audio_bytes)
-
         with st.spinner("Transcribing..."):
             transcription = transcribe_audio(audio_path)
-
         if transcription:
             st.markdown("### 📝 Transcription")
             st.write(transcription)
-
             save_metadata(audio_type, filename, transcription)
-
             with st.spinner("Uploading to Hugging Face..."):
                 push_to_huggingface()
-
             st.success("✅ Recorded audio saved & uploaded!")
 
-# ============================
 # UPLOAD TAB
-# ============================
-
 with tab2:
     st.subheader("📂 Upload audio file")
-
     uploaded_file = st.file_uploader(
         "Upload WAV, MP3, M4A, or MP4",
         type=["wav", "mp3", "m4a", "mp4"]
     )
-
     if uploaded_file:
         with st.spinner("Saving uploaded file..."):
             audio_path, filename, audio_type = save_uploaded_file(uploaded_file)
-
         st.audio(audio_path)
-
         with st.spinner("Transcribing..."):
             transcription = transcribe_audio(audio_path)
-
         if transcription:
             st.markdown("### 📝 Transcription")
             st.write(transcription)
-
             save_metadata(audio_type, filename, transcription)
-
             with st.spinner("Uploading to Hugging Face..."):
                 push_to_huggingface()
-
             st.success("✅ Uploaded audio saved & uploaded!")
 
-# ============================
 # DISPLAY METADATA
-# ============================
-
 if os.path.exists(METADATA_PATH):
     st.subheader("📄 Current Dataset Metadata")
     st.dataframe(pd.read_csv(METADATA_PATH))
