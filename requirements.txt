@@ -10,4 +10,6 @@ scipy
 ffmpeg-python
 imageio
 imageio-ffmpeg
+audio_bytes = audio_recorder(key="audio_recorder")
+
 
