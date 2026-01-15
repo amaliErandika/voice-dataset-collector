@@ -1,0 +1,12 @@
+streamlit
+openai-whisper
+torch
+pandas
+python-dotenv
+huggingface_hub
+audio-recorder-streamlit
+numpy
+scipy
+ffmpeg-python
+imageio
+imageio-ffmpeg

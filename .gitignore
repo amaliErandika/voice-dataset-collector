@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+*.env
+
+# Streamlit / VS Code
+.streamlit/
+.vscode/
+
+# Audio files
+audio/
+data/metadata.csv
+
+# Ignore system files
+.DS_Store
+Thumbs.db
